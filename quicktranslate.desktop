@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=QuickTranslate
+GenericName=极速桌面翻译
+Comment=支持全局自定义快捷键、自动聚焦、标准发音、词性释义与双语例句的极速桌面翻译工具
+Exec=/home/zhongpeng/Projects/PythonProject/QuickTranslate/dist/QuickTranslate/QuickTranslate
+Icon=/home/zhongpeng/Projects/PythonProject/QuickTranslate/assets/icon.png
+Terminal=false
+Type=Application
+Categories=Utility;Translation;Education;
+StartupNotify=true
