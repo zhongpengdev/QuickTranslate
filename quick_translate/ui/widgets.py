@@ -7,7 +7,7 @@ class SearchInput(QLineEdit):
     search_requested = pyqtSignal(str)
     escape_pressed = pyqtSignal()
 
-    def __init__(self, placeholder="输入要翻译的词汇、短语或句子，按 Enter 翻译...", parent=None):
+    def __init__(self, placeholder="输入词汇、短语或句子，按 Enter 翻译...", parent=None):
         super().__init__(parent)
         self.setObjectName("SearchInput")
         self.setPlaceholderText(placeholder)
@@ -25,7 +25,6 @@ class SearchInput(QLineEdit):
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        # Select all when regaining focus so new typing replaces easily
         self.selectAll()
 
 class AudioButton(QPushButton):
@@ -53,12 +52,45 @@ class PosBadge(QLabel):
         self.setProperty("class", "PosBadge")
         self.setAlignment(Qt.AlignCenter)
 
-class TagBadge(QLabel):
-    """Tag badge for engines or cache info."""
+class ExamTag(QLabel):
+    """Exam tag chip like CET4, IELTS, etc."""
     def __init__(self, text: str, parent=None):
         super().__init__(text, parent)
-        self.setProperty("class", "TagBadge")
+        self.setProperty("class", "ExamTag")
         self.setAlignment(Qt.AlignCenter)
+
+class WordFormChip(QLabel):
+    """Word form chip like '过去式 ran'."""
+    def __init__(self, name: str, value: str, parent=None):
+        super().__init__(f"{name}: {value}", parent)
+        self.setProperty("class", "WordFormChip")
+        self.setAlignment(Qt.AlignCenter)
+
+class QuickChip(QPushButton):
+    """Clickable chip for recent search history."""
+    chip_clicked = pyqtSignal(str)
+
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self.setProperty("class", "QuickChip")
+        self.setCursor(Qt.PointingHandCursor)
+        self.query_text = text
+        self.clicked.connect(lambda: self.chip_clicked.emit(self.query_text))
+
+class ClipboardBar(QPushButton):
+    """Smart clipboard action button."""
+    clipboard_clicked = pyqtSignal(str)
+
+    def __init__(self, clip_text: str, parent=None):
+        super().__init__(parent)
+        self.setProperty("class", "ClipboardBar")
+        self.setCursor(Qt.PointingHandCursor)
+        self.clip_text = clip_text
+        display = clip_text.replace("\n", " ").strip()
+        if len(display) > 35:
+            display = display[:35] + "..."
+        self.setText(f"📋 查询剪贴板内容: \"{display}\"  (按 Tab 快速填入)")
+        self.clicked.connect(lambda: self.clipboard_clicked.emit(self.clip_text))
 
 class CopyButton(QPushButton):
     """Quick button to copy text to clipboard."""

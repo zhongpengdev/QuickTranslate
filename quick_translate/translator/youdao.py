@@ -1,21 +1,23 @@
 import re
 import requests
 from typing import Optional
-from .models import TranslationResult, ExampleSentence, PartOfSpeechMeaning
+from .models import (
+    TranslationResult, ExampleSentence, PartOfSpeechMeaning,
+    WordForm, PhraseItem, SynonymItem
+)
 
 def clean_html(text: str) -> str:
     if not text:
         return ""
-    # Replace HTML entities and tags
-    text = text.replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    text = str(text).replace("&quot;", '"').replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
     return re.sub(r"<[^>]+>", "", text).strip()
 
 class YoudaoTranslator:
-    """Free Youdao Dictionary API client with phonetic, audio, POS, and bilingual examples."""
+    """Free Youdao Dictionary API client with phonetics, audio, POS, bilingual examples, word forms, and phrases."""
 
     BASE_URL = "https://dict.youdao.com/jsonapi"
 
-    def __init__(self, timeout=5):
+    def __init__(self, timeout=4):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({
@@ -43,6 +45,11 @@ class YoudaoTranslator:
         pos_meanings = []
         common_meanings = []
         examples = []
+        word_forms = []
+        phrases = []
+        synonyms = []
+        exam_tags = []
+        collins_star = None
         primary_translation = ""
         detected_lang = "en"
 
@@ -75,7 +82,6 @@ class YoudaoTranslator:
                     full_def = " ".join(str(x) for x in pos_text_arr).strip()
                     common_meanings.append(full_def)
                     
-                    # Split into POS and definition if matches "pos. definition"
                     match = re.match(r"^([a-zA-Z]+\.)\s*(.*)$", full_def)
                     if match:
                         pos = match.group(1)
@@ -83,6 +89,19 @@ class YoudaoTranslator:
                         pos_meanings.append(PartOfSpeechMeaning(pos=pos, definitions=[definition]))
                     else:
                         pos_meanings.append(PartOfSpeechMeaning(pos="释义", definitions=[full_def]))
+
+            # Word forms
+            for wf_item in w.get("wfs", []):
+                wf = wf_item.get("wf", {})
+                name = wf.get("name")
+                val = wf.get("value")
+                if name and val:
+                    word_forms.append(WordForm(name=name, value=val))
+
+            # Exam types
+            for e in data["ec"].get("exam_type", []):
+                if isinstance(e, str) and e.strip():
+                    exam_tags.append(e.strip())
 
         # 2. Chinese to English (ce)
         elif "ce" in data:
@@ -108,7 +127,34 @@ class YoudaoTranslator:
                     common_meanings.append(joined)
                     pos_meanings.append(PartOfSpeechMeaning(pos="英译", definitions=[joined]))
 
-        # 3. Web Translation if ec/ce empty
+        # 3. Collins star
+        if "collins" in data:
+            entries = data["collins"].get("collins_entries", [])
+            if entries and isinstance(entries, list):
+                s = entries[0].get("star")
+                if s and str(s).isdigit():
+                    collins_star = int(s)
+
+        # 4. Common Phrases
+        if "phrs" in data:
+            for p in data["phrs"].get("phrs", [])[:5]:
+                phr_data = p.get("phr", {})
+                hw = phr_data.get("headword", {}).get("l", {}).get("i")
+                trs = phr_data.get("trs", [])
+                tr_text = trs[0].get("tr", {}).get("l", {}).get("i") if trs else ""
+                if hw and tr_text:
+                    phrases.append(PhraseItem(phrase=clean_html(hw), meaning=clean_html(tr_text)))
+
+        # 5. Synonyms
+        if "syno" in data:
+            for s in data["syno"].get("synos", [])[:3]:
+                syno_item = s.get("syno", {})
+                pos = syno_item.get("pos") or ""
+                words = [w_item.get("w") for w_item in syno_item.get("ws", []) if w_item.get("w")]
+                if words:
+                    synonyms.append(SynonymItem(pos=pos, words=words[:5]))
+
+        # 6. Web Translation fallback
         if not common_meanings and "web_trans" in data:
             web_data = data["web_trans"].get("web-translation", [])
             for item in web_data[:3]:
@@ -117,16 +163,14 @@ class YoudaoTranslator:
                 if trans_list:
                     common_meanings.append(f"{key}: " + ", ".join(trans_list))
 
-        # 4. Translation (fanyi)
+        # 7. Translation (fanyi)
         if "fanyi" in data:
             primary_translation = data["fanyi"].get("tran", "")
         elif common_meanings:
-            # First meaning as primary translation
             first = common_meanings[0]
-            # Strip POS prefix like "n. " if present
             primary_translation = re.sub(r"^[a-zA-Z]+\.\s*", "", first).split("；")[0].split(";")[0]
 
-        # 5. Bilingual Example Sentences (blng_sents_part)
+        # 8. Bilingual Example Sentences (blng_sents_part)
         if "blng_sents_part" in data:
             sents = data["blng_sents_part"].get("sentence-pair", [])
             for s in sents[:6]:
@@ -135,16 +179,14 @@ class YoudaoTranslator:
                 if eng and cn:
                     examples.append(ExampleSentence(source=eng, target=cn))
 
-        # 6. Fallback to authentic sentences (auth_sents_part)
+        # Fallback to authentic sentences (auth_sents_part)
         if not examples and "auth_sents_part" in data:
             auth_sents = data["auth_sents_part"].get("sent", [])
-            for s in auth_sents[:5]:
+            for s in auth_sents[:4]:
                 foreign = clean_html(s.get("foreign", ""))
-                speech = clean_html(s.get("speech", ""))
                 source = clean_html(s.get("source", ""))
-                target = f"来源: {source}" if source else ""
                 if foreign:
-                    examples.append(ExampleSentence(source=foreign, target=target))
+                    examples.append(ExampleSentence(source=foreign, target=f"来源: {source}" if source else ""))
 
         return TranslationResult(
             query=query,
@@ -154,6 +196,11 @@ class YoudaoTranslator:
             pos_meanings=pos_meanings,
             common_meanings=common_meanings,
             examples=examples,
+            word_forms=word_forms,
+            phrases=phrases,
+            synonyms=synonyms,
+            exam_tags=exam_tags,
+            collins_star=collins_star,
             detected_lang=detected_lang,
             source_engine="Youdao Dict"
         )

@@ -1,21 +1,52 @@
 import os
 import json
+import subprocess
 
 DEFAULT_CONFIG = {
     "hotkey": "Ctrl+Alt+T",
-    "theme": "dark",
-    "scale_factor": "auto",  # "auto", "1.25", "1.5", "1.75", "2.0"
-    "target_lang": "zh-CN",
+    "theme": "auto",            # "auto" (follows system), "light", "dark"
+    "scale_factor": "auto",     # "auto", "1.25", "1.5", "1.75", "2.0"
+    "smart_clipboard": True,    # Detect and offer clipboard text on dropdown
     "auto_pronounce": False,
     "auto_copy": False,
-    "window_width": 760,
-    "window_height": 600,
-    "history_max": 100,
-    "window_position": "center"  # "center" or "remember"
+    "window_width": 640,
+    "window_height": 540,
+    "history_max": 100
 }
 
+def detect_system_theme() -> str:
+    """
+    Detects whether the system is currently using dark or light theme.
+    Supports GNOME, KDE, and GTK environments.
+    """
+    # 1. Check org.gnome.desktop.interface color-scheme
+    try:
+        res = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+            capture_output=True, text=True, timeout=1
+        )
+        val = res.stdout.strip().lower()
+        if "dark" in val:
+            return "dark"
+    except Exception:
+        pass
+
+    # 2. Check org.gnome.desktop.interface gtk-theme
+    try:
+        res = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
+            capture_output=True, text=True, timeout=1
+        )
+        val = res.stdout.strip().lower()
+        if "dark" in val:
+            return "dark"
+    except Exception:
+        pass
+
+    return "light"
+
 class ConfigManager:
-    """Manages application configuration, persisting to JSON."""
+    """Manages application configuration, persisting to JSON with system theme detection."""
 
     def __init__(self, config_path=None):
         if not config_path:
@@ -51,14 +82,17 @@ class ConfigManager:
         self.data[key] = value
         self.save()
 
+    def get_effective_theme(self) -> str:
+        """Returns the actual active theme ('dark' or 'light') based on config or system."""
+        cfg_theme = self.get("theme", "auto")
+        if cfg_theme in ("dark", "light"):
+            return cfg_theme
+        return detect_system_theme()
+
     @staticmethod
     def human_to_pynput_hotkey(human_str: str) -> str:
-        """
-        Converts human readable hotkey like 'Ctrl+Alt+T' to pynput format '<ctrl>+<alt>+t'.
-        """
         if not human_str:
             return "<ctrl>+<alt>+t"
-        
         parts = [p.strip() for p in human_str.split("+") if p.strip()]
         pynput_parts = []
         for p in parts:
@@ -83,9 +117,6 @@ class ConfigManager:
 
     @staticmethod
     def pynput_to_human_hotkey(pynput_str: str) -> str:
-        """
-        Converts pynput format '<ctrl>+<alt>+t' to 'Ctrl+Alt+T'.
-        """
         if not pynput_str:
             return "Ctrl+Alt+T"
         parts = [p.strip() for p in pynput_str.split("+") if p.strip()]

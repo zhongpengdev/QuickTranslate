@@ -1,12 +1,12 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QComboBox, QCheckBox, QFrame, QMessageBox
+    QPushButton, QComboBox, QCheckBox, QFrame, QMessageBox, QWidget
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from ..config import ConfigManager
 
 class SettingsDialog(QDialog):
-    """Configuration dialog for custom hotkeys, theme, and app behavior."""
+    """Configuration dialog for custom hotkeys, auto system theme, and smart preferences."""
     hotkey_changed = pyqtSignal(str)
     theme_changed = pyqtSignal(str)
 
@@ -15,56 +15,47 @@ class SettingsDialog(QDialog):
         self.config = config_manager
         self.setObjectName("SettingsDialog")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.initial_theme = self.config.get("theme", "dark")
-        self.setWindowTitle("QuickTranslate - 设置")
-        self.setFixedWidth(460)
+        self.initial_theme = self.config.get("theme", "auto")
+        self.setWindowTitle("偏好设置 - QuickTranslate")
+        self.setFixedWidth(450)
         self._init_ui()
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
-        # 1. Title
-        title = QLabel("⚙️ 偏好设置")
-        title.setObjectName("QueryLabel")
-        layout.addWidget(title)
-
-        # 2. Hotkey Section
+        # 1. Hotkey Section
         hk_frame = QFrame()
         hk_frame.setProperty("class", "ResultCard")
         hk_layout = QVBoxLayout(hk_frame)
-        hk_layout.setSpacing(10)
+        hk_layout.setSpacing(8)
 
-        hk_title = QLabel("唤醒全局快捷键 (点击/按下即可唤醒窗口)")
-        hk_title.setStyleSheet("font-weight: bold;")
+        hk_title = QLabel("唤醒快捷键")
+        hk_title.setStyleSheet("font-weight: 600; font-size: 13.5px;")
         hk_layout.addWidget(hk_title)
 
-        # Preset Dropdown
         preset_layout = QHBoxLayout()
-        preset_layout.addWidget(QLabel("预设快捷键:"))
+        preset_layout.addWidget(QLabel("预设组合:"))
         self.preset_combo = QComboBox()
         presets = ["Ctrl+Alt+T (默认)", "Alt+Space", "Ctrl+Shift+D", "F4", "Ctrl+F8", "自定义"]
         self.preset_combo.addItems(presets)
         preset_layout.addWidget(self.preset_combo, stretch=1)
         hk_layout.addLayout(preset_layout)
 
-        # Custom Input
         custom_layout = QHBoxLayout()
-        custom_layout.addWidget(QLabel("快捷键组合:"))
+        custom_layout.addWidget(QLabel("自定义键:"))
         self.hotkey_input = QLineEdit(self.config.get("hotkey", "Ctrl+Alt+T"))
         self.hotkey_input.setPlaceholderText("例如: Ctrl+Alt+T 或 Alt+Space")
         custom_layout.addWidget(self.hotkey_input, stretch=1)
         hk_layout.addLayout(custom_layout)
 
-        tip_label = QLabel("提示: 支持组合键如 Ctrl+Alt+T, Alt+Space, Ctrl+Shift+D, F4 等。")
-        tip_label.setStyleSheet("color: #71717a; font-size: 12px;")
+        tip_label = QLabel("提示: 按下快捷键将自动从顶部菜单栏顺滑滑出翻译面板。")
+        tip_label.setStyleSheet("color: #71717a; font-size: 11.5px;")
         hk_layout.addWidget(tip_label)
 
-        # Connect preset change
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
 
-        # Select initial preset if matches
         current_hk = self.config.get("hotkey", "Ctrl+Alt+T")
         matched = False
         for i in range(self.preset_combo.count()):
@@ -78,45 +69,38 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(hk_frame)
 
-        # 3. Preferences Section
+        # 2. Preferences & Theme Section
         pref_frame = QFrame()
         pref_frame.setProperty("class", "ResultCard")
         pref_layout = QVBoxLayout(pref_frame)
         pref_layout.setSpacing(10)
 
+        # Theme Selector (Auto / Light / Dark)
         theme_layout = QHBoxLayout()
-        theme_layout.addWidget(QLabel("界面主题:"))
+        theme_layout.addWidget(QLabel("外观主题:"))
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["深色暗夜 (Dark)", "明亮白色 (Light)"])
-        if self.config.get("theme") == "light":
-            self.theme_combo.setCurrentIndex(1)
-        else:
-            self.theme_combo.setCurrentIndex(0)
+        theme_options = [
+            ("跟随系统 (Auto，推荐)", "auto"),
+            ("明亮白色 (Light)", "light"),
+            ("深色暗夜 (Dark)", "dark")
+        ]
+        for label, val in theme_options:
+            self.theme_combo.addItem(label, val)
+
+        saved_theme = self.config.get("theme", "auto")
+        for idx in range(self.theme_combo.count()):
+            if self.theme_combo.itemData(idx) == saved_theme:
+                self.theme_combo.setCurrentIndex(idx)
+                break
+
         self.theme_combo.currentIndexChanged.connect(self._on_theme_preview)
         theme_layout.addWidget(self.theme_combo, stretch=1)
         pref_layout.addLayout(theme_layout)
 
-        scale_layout = QHBoxLayout()
-        scale_layout.addWidget(QLabel("界面缩放:"))
-        self.scale_combo = QComboBox()
-        scale_options = [
-            ("自动高分屏缩放 (推荐)", "auto"),
-            ("125% (稍微放大)", "1.25"),
-            ("150% (舒适放大)", "1.5"),
-            ("175% (清晰大字)", "1.75"),
-            ("200% (超大高分)", "2.0"),
-            ("100% (原始未缩放)", "1.0")
-        ]
-        for label, val in scale_options:
-            self.scale_combo.addItem(label, val)
-
-        current_scale = str(self.config.get("scale_factor", "auto"))
-        for idx in range(self.scale_combo.count()):
-            if self.scale_combo.itemData(idx) == current_scale:
-                self.scale_combo.setCurrentIndex(idx)
-                break
-        scale_layout.addWidget(self.scale_combo, stretch=1)
-        pref_layout.addLayout(scale_layout)
+        # Smart features
+        self.clipboard_cb = QCheckBox("唤醒时智能识别剪贴板内容")
+        self.clipboard_cb.setChecked(self.config.get("smart_clipboard", True))
+        pref_layout.addWidget(self.clipboard_cb)
 
         self.auto_pronounce_cb = QCheckBox("查词后自动朗读发音")
         self.auto_pronounce_cb.setChecked(self.config.get("auto_pronounce", False))
@@ -128,7 +112,7 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(pref_frame)
 
-        # 4. Action Buttons
+        # 3. Action Buttons
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
@@ -157,13 +141,19 @@ class SettingsDialog(QDialog):
             self.hotkey_input.setText("Ctrl+F8")
 
     def _on_theme_preview(self, index: int):
-        theme = "light" if index == 1 else "dark"
-        self.theme_changed.emit(theme)
+        theme_mode = self.theme_combo.itemData(index)
+        eff_theme = self.config.get_effective_theme() if theme_mode == "auto" else theme_mode
+        self.theme_changed.emit(eff_theme)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        for child in self.findChildren(QWidget):
+            child.style().unpolish(child)
+            child.style().polish(child)
+        self.update()
 
     def reject(self):
-        # Revert theme if user cancels without saving
-        saved_theme = self.config.get("theme", "dark")
-        self.theme_changed.emit(saved_theme)
+        eff = self.config.get_effective_theme()
+        self.theme_changed.emit(eff)
         super().reject()
 
     def _save_settings(self):
@@ -172,32 +162,21 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "错误", "快捷键不能为空！")
             return
 
-        # Save to config
         old_hk = self.config.get("hotkey")
         self.config.set("hotkey", new_hk)
 
-        new_theme = "light" if self.theme_combo.currentIndex() == 1 else "dark"
-        old_theme = self.config.get("theme")
+        new_theme = self.theme_combo.currentData()
         self.config.set("theme", new_theme)
+        self.initial_theme = new_theme
 
-        new_scale = self.scale_combo.currentData()
-        old_scale = self.config.get("scale_factor", "auto")
-        self.config.set("scale_factor", new_scale)
-
+        self.config.set("smart_clipboard", self.clipboard_cb.isChecked())
         self.config.set("auto_pronounce", self.auto_pronounce_cb.isChecked())
         self.config.set("auto_copy", self.auto_copy_cb.isChecked())
 
         if new_hk != old_hk:
             self.hotkey_changed.emit(new_hk)
 
-        if new_theme != old_theme:
-            self.theme_changed.emit(new_theme)
-
-        if new_scale != old_scale:
-            QMessageBox.information(
-                self,
-                "缩放已设置",
-                "界面缩放比例已更新，将在重启程序后完全生效。"
-            )
+        eff = self.config.get_effective_theme()
+        self.theme_changed.emit(eff)
 
         self.accept()
